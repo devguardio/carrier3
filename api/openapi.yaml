@@ -1,0 +1,56 @@
+openapi: 3.0.0
+info:
+  title: carrier
+  description: computer go beep boop
+  version: 3.0.0
+
+servers:
+  - url: https://carrier.devguard.io/
+    description: prod
+
+components:
+  schemas:
+    IdentifyResponse:
+      type: object
+      properties:
+        Identity:
+          type: string
+      required:
+        - Identity
+    Connect:
+      type: object
+      properties:
+        Caller:
+          type: string
+      required:
+        - Caller
+
+paths:
+
+
+  /v1/identify:
+    get:
+      responses:
+        '200':
+          description: "ok"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentifyResponse'
+  /v1/listen:
+    post:
+      responses:
+        '200':
+          description: "ok"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connect'
+    connect:
+      responses:
+        '101':
+          description: "upgrade"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connect'
