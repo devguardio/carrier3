@@ -2,7 +2,7 @@ package main
 
 import (
     "github.com/spf13/cobra"
-    "github.com/devguardio/carrier3/surface"
+    "github.com/devguardio/carrier3/v3/surface"
     "io/ioutil"
     "os"
     "github.com/go-chi/chi/v5"
@@ -11,7 +11,8 @@ import (
     ik "github.com/devguardio/identity/go"
     "net/http"
     "context"
-    "github.com/devguardio/carrier3"
+    "github.com/devguardio/carrier3/v3"
+    "github.com/devguardio/carrier3/v3/cli"
     "time"
     "strings"
 )
@@ -25,7 +26,7 @@ func main() {
     }
 
 
-    rootCmd.AddCommand(SurfaceCmd())
+    rootCmd.AddCommand(cli.SurfaceCmd())
 
     var arg_disable_pty bool
     var arg_force_pty  bool
@@ -35,13 +36,15 @@ func main() {
         Args:       cobra.MinimumNArgs(1),
         Run: func(cmd *cobra.Command, args []string) {
 
+            vault := ik.Vault()
+
             // this is not how ssh behaves, which people expect i guess
             //c  := ""
             //for _, arg := range args[1:] {
             //  c += "'" + strings.ReplaceAll(arg, "'", "'\"'\"'") + "' "
             //}
             c := strings.Join(args[1:], " ")
-            code := shellMain(args[0], c, arg_disable_pty, arg_force_pty)
+            code := cli.Shell(vault, args[0], c, arg_disable_pty, arg_force_pty)
             os.Exit(code)
         },
     }
@@ -70,7 +73,7 @@ func main() {
                     "hello": r.RemoteAddr,
                 })
             })
-            r.Handle("/v1/shell", carrier3.NewShellHandler("/bin/bash"))
+            r.Handle("/v1/shell", carrier3.NewShellHandler("/bin/sh"))
             r.Handle("/demo/tick", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
                 w.WriteHeader(200)
                 for ;; {

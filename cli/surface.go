@@ -1,9 +1,9 @@
-package main
+package cli
 
 import (
     "github.com/devguardio/identity/go"
     "github.com/spf13/cobra"
-    "github.com/devguardio/carrier3/surface"
+    "github.com/devguardio/carrier3/v3/surface"
     "io/ioutil"
     "encoding/json"
     "os"

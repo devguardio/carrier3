@@ -1,26 +1,26 @@
-package main
+package cli
 
 import (
+    "crypto/tls"
     "crypto/x509"
     "encoding/binary"
     "fmt"
     "github.com/creack/pty"
-    "github.com/devguardio/identity/go"
-    "github.com/devguardio/carrier3"
+    "github.com/devguardio/carrier3/v3"
     "golang.org/x/term"
-    iktls "github.com/devguardio/identity/go/tls"
+    ik      "github.com/devguardio/identity/go"
+    iktls   "github.com/devguardio/identity/go/tls"
     "io"
     "net/http"
     "os"
     "os/signal"
     "syscall"
     "golang.org/x/crypto/ssh/terminal"
+    "bufio"
+    "bytes"
 )
 
-var URL = "https://carrier.devguard.io/v1/shell"
-
-
-func shellMain(target string, cmd string, disable_pty bool, force_pty bool) (exitCode int) {
+func Shell(vault ik.VaultI, target string, cmd string, disable_pty bool, force_pty bool) (exitCode int) {
 
     requestPTY := terminal.IsTerminal(syscall.Stdin)
     if disable_pty {
@@ -30,27 +30,17 @@ func shellMain(target string, cmd string, disable_pty bool, force_pty bool) (exi
     }
     var printHeaders = requestPTY;
 
-    vault := identity.Vault()
     tlsconf, err := iktls.NewTlsClient(vault)
     if err != nil { panic(err) }
     tlsconf.RootCAs, _ = x509.SystemCertPool()
+    tlsconf.ServerName = "carrier.devguard.io"
 
-    var hc = http.Client{
-        Transport: &http.Transport{
-            // h2 doesnt seem to work reliably when the remote is closed before we send stdin (like in a 404)
-            ForceAttemptHTTP2:  false,
-            TLSClientConfig:    tlsconf,
-        },
-    }
-
-	pr, pw := io.Pipe()
-    defer pw.Close();
-
-    req, err := http.NewRequest("POST", URL, pr)
+    conn, err := tls.Dial("tcp", "carrier.devguard.io:443", tlsconf)
     if err != nil { panic(err) }
-    req.ContentLength = -1
-    req.Close = true
+    defer conn.Close();
 
+    req, err := http.NewRequest("POST", "https://carrier.devguard.io/v1/shell", nil)
+    if err != nil { panic(err) }
 
     req.Header.Add("Target",  target)
     req.Header.Add("Mux",     "true")
@@ -60,18 +50,27 @@ func shellMain(target string, cmd string, disable_pty bool, force_pty bool) (exi
     if cmd != "" {
         req.Header.Add("Command", cmd)
     }
-    req.Header.Add("Transfer-Encoding", "chunked")
 
     if os.Getenv("TERM") != "" {
         req.Header.Add("Env", "TERM=" + os.Getenv("TERM"))
     }
 
-    resp, err := hc.Do(req)
-    if err != nil { panic(err) }
+    // have to manually write the request because golang has some bad assumptions for request body
+    rqb := bytes.Buffer{}
+    req.Header.Add("Host", "carrier.devguard.io" )
+    req.Header.Add("Connection", "close")
+    req.Header.Add("Transfer-Encoding", "chunked")
 
-    defer resp.Body.Close();
+    rqb.Write([]byte("POST /v1/shell HTTP/1.1\r\n"))
+    req.Header.Write(&rqb)
+    rqb.Write([]byte("\r\n"))
+
+    conn.Write(rqb.Bytes())
 
     // read response
+    resp, err := http.ReadResponse(bufio.NewReader(conn), req)
+    if err != nil { panic(err) }
+
     if printHeaders {
         fmt.Fprintf(os.Stderr, "%s %s\n", resp.Proto, resp.Status);
         for k,v := range resp.Header {
@@ -86,17 +85,19 @@ func shellMain(target string, cmd string, disable_pty bool, force_pty bool) (exi
         if !printHeaders {
             fmt.Fprintf(os.Stderr, "%s %s\n", resp.Proto, resp.Status);
         }
-        pw.Close();
+        if resp.StatusCode != 503 {
+            return 8888;
+        }
         io.Copy(os.Stderr, resp.Body)
         os.Exit(resp.StatusCode)
         return
     }
 
     R := resp.Body
-    W := pw
+    W := carrier3.NewChunkedWriter(conn)
 
-    // golang won't send the request if there's no start of body
-    W.Write([]byte{carrier3.ShellFrameTypePing, 0, 0, 0})
+    // golang http client won't send the request if there's no start of body
+    // W.Write([]byte{carrier3.ShellFrameTypePing, 0, 0, 0})
 
     if requestPTY {
 
@@ -156,7 +157,6 @@ func shellMain(target string, cmd string, disable_pty bool, force_pty bool) (exi
             break
         }
         l := binary.LittleEndian.Uint16(h[2:])
-
 
         for ;; {
             var max = l
