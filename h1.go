@@ -69,6 +69,9 @@ func (self *H1Link) acceptOnce() (net.Conn, error) {
         if err != nil { conn.Close(); return nil, err }
         if len(line) == 0 { break }
         log.Println(string(line))
+        split := strings.Split(string(line), ":")
+        if len(split) == 2 && split[0] == "Seat" {
+        }
     }
 
     if bio.Buffered() != 0 {

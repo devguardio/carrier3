@@ -17,6 +17,19 @@ components:
           type: string
       required:
         - Identity
+    RegistrationResponse:
+      type: object
+      properties:
+        Identity:
+          type: string
+        Seat:
+          type: integer
+        Org:
+          type: string
+      required:
+        - Identity
+        - Seat
+        - Org
     Connect:
       type: object
       properties:
@@ -37,15 +50,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IdentifyResponse'
-  /v1/listen:
+  /v1/register:
     post:
+      parameters:
+        - in: header
+          name: X-AutoReg-Secret
+          schema:
+            type: string
+          required: true
       responses:
         '200':
           description: "ok"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Connect'
+                $ref: '#/components/schemas/RegistrationResponse'
+  /v1/listen:
     connect:
       responses:
         '101':

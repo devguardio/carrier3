@@ -15,6 +15,7 @@ import (
     "github.com/devguardio/carrier3/v3/cli"
     "time"
     "strings"
+    log "github.com/sirupsen/logrus"
 )
 
 
@@ -35,7 +36,6 @@ func main() {
         Short:      "connect to shell",
         Args:       cobra.MinimumNArgs(1),
         Run: func(cmd *cobra.Command, args []string) {
-
             vault := ik.Vault()
 
             // this is not how ssh behaves, which people expect i guess
@@ -52,7 +52,8 @@ func main() {
     shellCmd.Flags().BoolVarP(&arg_force_pty, "force-pty",  "t", false, "Request pseudo-terminal allocation, even if stdio is not a terminal")
     rootCmd.AddCommand(shellCmd)
 
-    rootCmd.AddCommand(&cobra.Command{
+    var arg_autoreg string
+    pubCmd := &cobra.Command{
         Use:        "publish <surface>",
         Short:      "a demo publisher",
         Args:       cobra.MinimumNArgs(1),
@@ -65,6 +66,17 @@ func main() {
 
             sf, err := surface.Parse(f);
             if err != nil { panic(err) }
+
+            if arg_autoreg != "" {
+                sk, err := ik.SecretFromString(arg_autoreg)
+                if err != nil { panic(err) }
+                seat, err := carrier3.Register(context.Background(), vault, sf, sk)
+                if err != nil {
+                    log.WithError(err).Error("registration failed")
+                } else {
+                  log.Println("seat:", seat.Seat, "org:", seat.Org)
+                }
+            }
 
             r := chi.NewRouter()
             r.Use(middleware.Logger)
@@ -89,8 +101,7 @@ func main() {
                 }
             }))
 
-
-            link, err := carrier3.Link(context.Background(), vault, sf);
+            link, err := carrier3.Link(context.Background(), vault, sf)
             if err != nil { panic(err) }
             defer link.Close();
 
@@ -101,7 +112,10 @@ func main() {
             if err != nil { panic(err) }
 
         },
-    })
+    }
+    pubCmd.Flags().StringVar(&arg_autoreg, "autoreg",  "", "secret for auto registration")
+    rootCmd.AddCommand(pubCmd)
+
     if err := rootCmd.Execute(); err != nil {
         os.Exit(1);
     }

@@ -16,6 +16,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/deepmap/oapi-codegen/pkg/runtime"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
 )
@@ -28,6 +29,18 @@ type Connect struct {
 // IdentifyResponse defines model for IdentifyResponse.
 type IdentifyResponse struct {
 	Identity string `json:"Identity"`
+}
+
+// RegistrationResponse defines model for RegistrationResponse.
+type RegistrationResponse struct {
+	Identity string `json:"Identity"`
+	Org      string `json:"Org"`
+	Seat     int    `json:"Seat"`
+}
+
+// PostV1RegisterParams defines parameters for PostV1Register.
+type PostV1RegisterParams struct {
+	XAutoRegSecret string `json:"X-AutoReg-Secret"`
 }
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
@@ -109,8 +122,8 @@ type ClientInterface interface {
 	// ConnectV1Listen request
 	ConnectV1Listen(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PostV1Listen request
-	PostV1Listen(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PostV1Register request
+	PostV1Register(ctx context.Context, params *PostV1RegisterParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) GetV1Identify(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -137,8 +150,8 @@ func (c *Client) ConnectV1Listen(ctx context.Context, reqEditors ...RequestEdito
 	return c.Client.Do(req)
 }
 
-func (c *Client) PostV1Listen(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostV1ListenRequest(c.Server)
+func (c *Client) PostV1Register(ctx context.Context, params *PostV1RegisterParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostV1RegisterRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -203,8 +216,8 @@ func NewConnectV1ListenRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
-// NewPostV1ListenRequest generates requests for PostV1Listen
-func NewPostV1ListenRequest(server string) (*http.Request, error) {
+// NewPostV1RegisterRequest generates requests for PostV1Register
+func NewPostV1RegisterRequest(server string, params *PostV1RegisterParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -212,7 +225,7 @@ func NewPostV1ListenRequest(server string) (*http.Request, error) {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/v1/listen")
+	operationPath := fmt.Sprintf("/v1/register")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -226,6 +239,15 @@ func NewPostV1ListenRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	var headerParam0 string
+
+	headerParam0, err = runtime.StyleParamWithLocation("simple", false, "X-AutoReg-Secret", runtime.ParamLocationHeader, params.XAutoRegSecret)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("X-AutoReg-Secret", headerParam0)
 
 	return req, nil
 }
@@ -279,8 +301,8 @@ type ClientWithResponsesInterface interface {
 	// ConnectV1Listen request
 	ConnectV1ListenWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ConnectV1ListenResponse, error)
 
-	// PostV1Listen request
-	PostV1ListenWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostV1ListenResponse, error)
+	// PostV1Register request
+	PostV1RegisterWithResponse(ctx context.Context, params *PostV1RegisterParams, reqEditors ...RequestEditorFn) (*PostV1RegisterResponse, error)
 }
 
 type GetV1IdentifyResponse struct {
@@ -327,14 +349,14 @@ func (r ConnectV1ListenResponse) StatusCode() int {
 	return 0
 }
 
-type PostV1ListenResponse struct {
+type PostV1RegisterResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *Connect
+	JSON200      *RegistrationResponse
 }
 
 // Status returns HTTPResponse.Status
-func (r PostV1ListenResponse) Status() string {
+func (r PostV1RegisterResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -342,7 +364,7 @@ func (r PostV1ListenResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r PostV1ListenResponse) StatusCode() int {
+func (r PostV1RegisterResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -367,13 +389,13 @@ func (c *ClientWithResponses) ConnectV1ListenWithResponse(ctx context.Context, r
 	return ParseConnectV1ListenResponse(rsp)
 }
 
-// PostV1ListenWithResponse request returning *PostV1ListenResponse
-func (c *ClientWithResponses) PostV1ListenWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostV1ListenResponse, error) {
-	rsp, err := c.PostV1Listen(ctx, reqEditors...)
+// PostV1RegisterWithResponse request returning *PostV1RegisterResponse
+func (c *ClientWithResponses) PostV1RegisterWithResponse(ctx context.Context, params *PostV1RegisterParams, reqEditors ...RequestEditorFn) (*PostV1RegisterResponse, error) {
+	rsp, err := c.PostV1Register(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParsePostV1ListenResponse(rsp)
+	return ParsePostV1RegisterResponse(rsp)
 }
 
 // ParseGetV1IdentifyResponse parses an HTTP response from a GetV1IdentifyWithResponse call
@@ -428,22 +450,22 @@ func ParseConnectV1ListenResponse(rsp *http.Response) (*ConnectV1ListenResponse,
 	return response, nil
 }
 
-// ParsePostV1ListenResponse parses an HTTP response from a PostV1ListenWithResponse call
-func ParsePostV1ListenResponse(rsp *http.Response) (*PostV1ListenResponse, error) {
+// ParsePostV1RegisterResponse parses an HTTP response from a PostV1RegisterWithResponse call
+func ParsePostV1RegisterResponse(rsp *http.Response) (*PostV1RegisterResponse, error) {
 	bodyBytes, err := ioutil.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &PostV1ListenResponse{
+	response := &PostV1RegisterResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Connect
+		var dest RegistrationResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -463,8 +485,8 @@ type ServerInterface interface {
 	// (CONNECT /v1/listen)
 	ConnectV1Listen(w http.ResponseWriter, r *http.Request)
 
-	// (POST /v1/listen)
-	PostV1Listen(w http.ResponseWriter, r *http.Request)
+	// (POST /v1/register)
+	PostV1Register(w http.ResponseWriter, r *http.Request, params PostV1RegisterParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -505,12 +527,41 @@ func (siw *ServerInterfaceWrapper) ConnectV1Listen(w http.ResponseWriter, r *htt
 	handler(w, r.WithContext(ctx))
 }
 
-// PostV1Listen operation middleware
-func (siw *ServerInterfaceWrapper) PostV1Listen(w http.ResponseWriter, r *http.Request) {
+// PostV1Register operation middleware
+func (siw *ServerInterfaceWrapper) PostV1Register(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostV1RegisterParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-AutoReg-Secret" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-AutoReg-Secret")]; found {
+		var XAutoRegSecret string
+		n := len(valueList)
+		if n != 1 {
+			http.Error(w, fmt.Sprintf("Expected one value for X-AutoReg-Secret, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithLocation("simple", false, "X-AutoReg-Secret", runtime.ParamLocationHeader, valueList[0], &XAutoRegSecret)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Invalid format for parameter X-AutoReg-Secret: %s", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XAutoRegSecret = XAutoRegSecret
+
+	} else {
+		http.Error(w, fmt.Sprintf("Header parameter X-AutoReg-Secret is required, but not found: %s", err), http.StatusBadRequest)
+		return
+	}
+
 	var handler = func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostV1Listen(w, r)
+		siw.Handler.PostV1Register(w, r, params)
 	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -564,7 +615,7 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Connect(options.BaseURL+"/v1/listen", wrapper.ConnectV1Listen)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/v1/listen", wrapper.PostV1Listen)
+		r.Post(options.BaseURL+"/v1/register", wrapper.PostV1Register)
 	})
 
 	return r
@@ -573,13 +624,14 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/6ySsW7bQAyGX8VgOx58Urvd2qEI0KHokCXIcJZo+VLlyPIoA0agdy94klIkTtslk+nT",
-	"T/LjTz5BR49MGbMWCE9QuhM+xhp+oZyxUwtZiFE04fIhjiOKRXphhABFJeUB5tmB4K8pCfYQ7jbdvdt0",
-	"dHiwgrODmx6zpuPlBxamXPC6yaLQy//bPCuvG5k05SNZkR5LJ4k1UYZQp54UZTfQ7oDIuwMRgwNNOlqF",
-	"LookFHBwRilLzud9s2+Mnhhz5PT85ICjniq2P7c+rcPZ/wGrgTZZtNY3PQT4inrbbhaATbO4UCt8ahr7",
-	"6Sgr5pocmcfU1XT/UAxl25NFHwWPEOCD/7NIv27RX9lcHXnpBP2019lV9DEVxbz237b/En49i9v226J9",
-	"hd827bvhbxf4BvXEg8R+HYipvAH6ncpfKd/T5H9Qrt7ODgqKHRKEu9eXyEI9OJhkhAAnVS7B+/X89j2e",
-	"hylKv0/kYb6ffwcAAP//W9syB68DAAA=",
+	"H4sIAAAAAAAC/7RTwYrbQAz9laD2OBvb7c230kNZKLRkIRSWHCb2izNbZ2aqkQMh+N/LjO1tsvFSKN2T",
+	"5dGT9CQ9nalyB+8srAQqzxSqPQ46mZ+dtagkmp6dB4vB4NBtC46WnDyopCBsbEN9r4jxqzOMmsrHCbdR",
+	"E85tn2LCXtF9DStmd1oheGcDbosMCDn9vcwzcq7QCo0JwlqMs/9UTNE3bmbfH6DlwmGsoAG/Tm+MGBLe",
+	"co1xxu5cTFkjVGx8JE1l2lAn4EXjFlvAL7bOeVIkRtqYodLMBkyKjuAwxHxc5ss8snQeVnvz/KTIa9mn",
+	"rrNjkZlxEfG/QeonDibN676mkr5A1sW0LoqtDUNMGT7kefxUzgpsCtbet6ZK4dlTiFQmTUXrPWNHJb3L",
+	"/oguGxWX3UgiTeR6Eu5nfO1Vot6aILBj/Ump1+RHCa+LrwP2Bf0iL/4b/elaZlh3vmFd44I6J1UON+Rd",
+	"mGH+3QVZF6sJF7fG+gABByofz2Ri4j10nZxWH6IQftx96sSt0Nw9oGIIXSpRuIO6aOblUW3ecLezV/j6",
+	"fntFAXycer3GeHY1Keq4jRMQ8aHMsvEEljWOTae5XhqXUb/pfwcAAP//OZki4t8EAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

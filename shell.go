@@ -44,6 +44,10 @@ func NewShellHandler(defaultshell string) http.HandlerFunc {
         }
     }
 
+    if wantPty && len(args) == 0 {
+        args = append(args, "-l")
+    }
+
     shell := exec.Command(defaultshell, args...)
     shell.Env = env
 
@@ -148,9 +152,6 @@ func NewShellHandler(defaultshell string) http.HandlerFunc {
 
 
 
-    os.Stderr.Write([]byte("REQ HEADERS=>\n"))
-    r.Header.Write(os.Stderr)
-
     if r.Header.Get("Connection") == "Upgrade" {
         con.Write([]byte("HTTP/1.1 101 Upgrade\r\nUpgrade: shell\r\n\r\n"))
     } else {
@@ -239,8 +240,6 @@ func NewShellHandler(defaultshell string) http.HandlerFunc {
             break
         }
         l := binary.LittleEndian.Uint16(h[2:])
-
-        log.Println(h)
 
         for ;; {
             var max = l
